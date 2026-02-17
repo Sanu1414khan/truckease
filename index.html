@@ -52,7 +52,7 @@
         #map { height: 200px; border-radius: 12px; margin: 10px 0; display: none; }
         .fare-box { background: #e8f0fe; padding: 15px; border-radius: 12px; text-align: center; margin: 15px 0; }
         .fare-box span { font-size: 28px; font-weight: 800; color: var(--porter-blue); }
-        .commission-note { background: #fef5e7; padding: 8px; border-radius: 8px; font-size: 13px; color: #b95b0d; text-align: center; margin-top: 10px; }
+        /* Commission note hata diya gaya hai */
         #addressDisplay { background: #fffde7; padding: 10px; border-radius: 8px; margin: 10px 0; display: none; }
 
         /* Login Modal */
@@ -160,7 +160,8 @@
             
             <div class="fare-box">
                 <span id="fareAmount">₹0</span>
-                
+                <!-- Commission note वाला div हटा दिया गया है -->
+            </div>
 
             <button class="btn-main" onclick="getCurrentLocation()">📍 GPS से लोकेशन लें</button>
             <div id="addressDisplay"></div>
@@ -228,7 +229,7 @@
     <!-- Iske neeche aap PART 2 ka code paste karein -->
 
 <script>
-    // ---------- FIREBASE CONFIG (aapke diye hue config mein se pahla) ----------
+    // ---------- FIREBASE CONFIG ----------
     const firebaseConfig = {
         apiKey: "AIzaSyByh4tT4zcUpjjQ_ebaYzpSulGtsDHjbw0",
         authDomain: "truckease-cb961.firebaseapp.com",
@@ -242,7 +243,7 @@
     const db = firebase.firestore();
 
     // ---------- GLOBAL VARIABLES ----------
-    let currentUser = null;              // Firebase user object
+    let currentUser = null;
     let selectedVehicle = '';
     let basePrice = 0;
     let perKmRate = 0;
@@ -261,7 +262,6 @@
             currentUser = null;
             document.getElementById('userInfo').innerHTML = '👤 लॉगिन';
             localStorage.removeItem('truckUser');
-            // Show login modal automatically after 1 second (optional)
             setTimeout(showLoginModal, 1000);
         }
     });
@@ -269,7 +269,6 @@
     // ---------- LOGIN MODAL ----------
     window.showLoginModal = function() {
         document.getElementById('loginModal').classList.add('active');
-        // Initialize recaptcha
         if (!recaptchaVerifier) {
             recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
                 size: 'invisible',
@@ -284,7 +283,7 @@
             alert('सही 10 अंकों का मोबाइल नंबर डालें');
             return;
         }
-        const fullPhone = '+91' + phone;  // India
+        const fullPhone = '+91' + phone;
         try {
             const confirmationResult = await auth.signInWithPhoneNumber(fullPhone, recaptchaVerifier);
             window.confirmationResult = confirmationResult;
@@ -314,14 +313,12 @@
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         document.getElementById(screenId).classList.add('active');
 
-        // Update bottom nav active state
         document.querySelectorAll('.nav-item').forEach((item, index) => {
             if (screenId === 'homeScreen' && index === 0) item.classList.add('active');
             else if (screenId === 'historyScreen' && index === 1) item.classList.add('active');
             else item.classList.remove('active');
         });
 
-        // Load history if history screen
         if (screenId === 'historyScreen') loadHistory();
     };
 
@@ -374,13 +371,12 @@
                 changeScreen('bookingScreen');
                 document.getElementById('kmInput').value = '';
                 document.getElementById('fareAmount').innerText = '₹0';
-                document.getElementById('commissionNote').innerHTML = '15% ऐप कमीशन: ₹0';
             });
         });
     }
     attachVehicleCardEvents();
 
-    // ---------- FARE CALCULATION ----------
+    // ---------- FARE CALCULATION (कमीशन अब सिर्फ internally calculate होता है, दिखता नहीं) ----------
     window.calculateFare = function() {
         let km = parseFloat(document.getElementById('kmInput').value) || 0;
         if (selectedVehicle.includes('Tata Ace')) {
@@ -390,9 +386,10 @@
         } else {
             finalFare = basePrice + (km * perKmRate);
         }
-        let commission = Math.round(finalFare * 0.15);
+        // सिर्फ किराया दिखाएँ, कमीशन नहीं
         document.getElementById('fareAmount').innerText = '₹' + finalFare;
-        
+        // Commission note वाली लाइन हटा दी गई है
+    };
 
     // ---------- GPS LOCATION ----------
     window.getCurrentLocation = function() {
@@ -440,6 +437,7 @@
         let pickup = document.getElementById('pickupAddr').value || 'ज्ञात नहीं';
         let drop = document.getElementById('dropAddr').value || 'ज्ञात नहीं';
         let km = parseFloat(document.getElementById('kmInput').value) || 0;
+        // कमीशन internally calculate हो रहा है और डेटाबेस में सेव होगा
         let commission = Math.round(finalFare * 0.15);
         let driverAmount = finalFare - commission;
 
@@ -451,15 +449,14 @@
             drop: drop,
             km: km,
             fare: finalFare,
-            commission: commission,
-            driverAmount: driverAmount,
-            status: 'pending',   // pending, accepted, completed, cancelled
+            commission: commission,        // यह डेटाबेस में सेव होगा (दिखेगा नहीं)
+            driverAmount: driverAmount,    // यह भी सेव होगा
+            status: 'pending',
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         };
 
         try {
             await db.collection('bookings').add(booking);
-            // Show success screen
             document.getElementById('successDetails').innerHTML = `
                 <p><strong>बुकिंग ID:</strong> ${booking.vehicle}-${Date.now()}</p>
                 <p><strong>गाड़ी:</strong> ${selectedVehicle}</p>
@@ -550,7 +547,7 @@
         changeScreen('historyScreen');
     };
 
-    // ---------- HIDE MODAL ON CLICK OUTSIDE (optional) ----------
+    // ---------- HIDE MODAL ON CLICK OUTSIDE ----------
     document.getElementById('loginModal').addEventListener('click', function(e) {
         if (e.target === this) {
             this.classList.remove('active');
