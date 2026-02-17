@@ -160,8 +160,7 @@
             
             <div class="fare-box">
                 <span id="fareAmount">₹0</span>
-                <div class="commission-note" id="commissionNote">15% ऐप कमीशन: ₹0</div>
-            </div>
+                
 
             <button class="btn-main" onclick="getCurrentLocation()">📍 GPS से लोकेशन लें</button>
             <div id="addressDisplay"></div>
@@ -393,8 +392,7 @@
         }
         let commission = Math.round(finalFare * 0.15);
         document.getElementById('fareAmount').innerText = '₹' + finalFare;
-        document.getElementById('commissionNote').innerHTML = `15% ऐप कमीशन: ₹${commission}<br>ड्राइवर को मिलेंगे: ₹${finalFare - commission}`;
-    };
+        
 
     // ---------- GPS LOCATION ----------
     window.getCurrentLocation = function() {
