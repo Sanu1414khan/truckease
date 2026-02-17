@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TruckEase - Driver Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: #f4f6fc; padding: 15px; }
+        .header { background: #2854ff; color: white; padding: 15px; border-radius: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .header h2 { font-size: 20px; }
+        #driverInfo { font-size: 14px; background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 20px; }
+        .btn-login { background: white; color: #2854ff; border: none; padding: 8px 15px; border-radius: 20px; font-weight: 600; cursor: pointer; }
+        .btn-accept { background: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 8px; font-weight: 600; cursor: pointer; width: 100%; }
+        .booking-card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-left: 4px solid #2854ff; }
+        .booking-card.pending { border-left-color: #ff9800; }
+        .booking-card h4 { font-size: 16px; margin-bottom: 8px; }
+        .booking-card p { font-size: 14px; color: #666; margin: 5px 0; }
+        .status { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .status.pending { background: #fff3cd; color: #856404; }
+        .status.accepted { background: #d4edda; color: #155724; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 2000; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; padding: 20px; border-radius: 20px; width: 90%; max-width: 350px; }
+        .modal-content input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; }
+        .btn-main { background: #2854ff; color: white; width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; margin-top: 10px; cursor: pointer; }
+        #recaptcha-container { margin: 10px 0; }
+        .error { color: red; font-size: 12px; margin-top: 5px; }
+        .empty-state { text-align: center; padding: 40px; color: #999; }
+    </style>
+</head>
+<body>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <h3 style="text-align:center;">🚛 ड्राइवर लॉगिन</h3>
+            <div id="phoneSection">
+                <input type="tel" id="phoneNumber" placeholder="मोबाइल नंबर (10 अंक)" maxlength="10">
+                <div id="recaptcha-container"></div>
+                <button class="btn-main" id="sendOtpBtn">OTP भेजें</button>
+            </div>
+            <div id="otpSection" style="display:none;">
+                <input type="text" id="otpCode" placeholder="OTP डालें">
+                <button class="btn-main" id="verifyOtpBtn">वेरिफाई करें</button>
+            </div>
+            <p id="loginError" class="error"></p>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <div class="header">
+        <h2>🚛 Driver Panel</h2>
+        <div id="driverInfo">
+            <span id="driverStatus">लॉगिन नहीं</span>
+            <button class="btn-login" id="loginBtn" onclick="showLoginModal()">लॉगिन</button>
+        </div>
+    </div>
+
+    <!-- Pending Bookings List -->
+    <div id="bookingsList">
+        <div style="text-align:center; padding:20px;">⏳ बुकिंग्स लोड हो रही हैं...</div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <script>
+        // Firebase Config (same as before)
+        const firebaseConfig = {
+            apiKey: "AIzaSyByh4tT4zcUpjjQ_ebaYzpSulGtsDHjbw0",
+            authDomain: "truckease-cb961.firebaseapp.com",
+            projectId: "truckease-cb961",
+            storageBucket: "truckease-cb961.firebasestorage.app",
+            messagingSenderId: "558046020925",
+            appId: "1:558046020925:web:573533af4bbf93841e3154"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentDriver = null;
+        let recaptchaVerifier;
+
+        // Check if already logged in
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                currentDriver = user;
+                document.getElementById('driverStatus').innerText = user.phoneNumber;
+                document.getElementById('loginBtn').innerText = 'लॉगआउट';
+                loadPendingBookings();
+            } else {
+                currentDriver = null;
+                document.getElementById('driverStatus').innerText = 'लॉगिन नहीं';
+                document.getElementById('loginBtn').innerText = 'लॉगिन';
+                document.getElementById('bookingsList').innerHTML = '<div class="empty-state">👤 कृपया पहले लॉगिन करें</div>';
+            }
+        });
+
+        // Login Modal Functions
+        window.showLoginModal = function() {
+            if (currentDriver) {
+                // Logout
+                auth.signOut();
+                return;
+            }
+            document.getElementById('loginModal').classList.add('active');
+            if (!recaptchaVerifier) {
+                recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+                    size: 'invisible',
+                    callback: () => {}
+                });
+            }
+        };
+
+        document.getElementById('sendOtpBtn')?.addEventListener('click', async () => {
+            const phone = document.getElementById('phoneNumber').value;
+            if (!phone || phone.length !== 10) {
+                document.getElementById('loginError').innerText = 'सही 10 अंक दर्ज करें';
+                return;
+            }
+            try {
+                const confirmationResult = await auth.signInWithPhoneNumber('+91' + phone, recaptchaVerifier);
+                window.confirmationResult = confirmationResult;
+                document.getElementById('phoneSection').style.display = 'none';
+                document.getElementById('otpSection').style.display = 'block';
+                document.getElementById('loginError').innerText = '';
+            } catch (error) {
+                document.getElementById('loginError').innerText = 'OTP नहीं भेजा: ' + error.message;
+            }
+        });
+
+        document.getElementById('verifyOtpBtn')?.addEventListener('click', async () => {
+            const otp = document.getElementById('otpCode').value;
+            if (!otp) return;
+            try {
+                await window.confirmationResult.confirm(otp);
+                document.getElementById('loginModal').classList.remove('active');
+                document.getElementById('phoneSection').style.display = 'block';
+                document.getElementById('otpSection').style.display = 'none';
+                document.getElementById('phoneNumber').value = '';
+                document.getElementById('otpCode').value = '';
+            } catch (error) {
+                document.getElementById('loginError').innerText = 'OTP गलत है';
+            }
+        });
+
+        // Close modal if clicked outside
+        document.getElementById('loginModal')?.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.remove('active');
+            }
+        });
+
+        // Load all pending bookings
+        async function loadPendingBookings() {
+            if (!currentDriver) return;
+
+            try {
+                const snapshot = await db.collection('bookings')
+                    .where('status', '==', 'pending')
+                    .orderBy('timestamp', 'desc')
+                    .get();
+
+                if (snapshot.empty) {
+                    document.getElementById('bookingsList').innerHTML = '<div class="empty-state">📭 कोई पेंडिंग बुकिंग नहीं है</div>';
+                    return;
+                }
+
+                let html = '';
+                snapshot.forEach(doc => {
+                    const b = doc.data();
+                    const id = doc.id;
+                    const time = b.timestamp ? new Date(b.timestamp.toDate()).toLocaleString('hi-IN') : 'अभी-अभी';
+                    
+                    html += `
+                        <div class="booking-card pending" data-id="${id}">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <h4>${b.vehicle || 'गाड़ी'}</h4>
+                                <span class="status pending">पेंडिंग</span>
+                            </div>
+                            <p><strong>📍 पिकअप:</strong> ${b.pickup}</p>
+                            <p><strong>🎯 ड्रॉप:</strong> ${b.drop}</p>
+                            <p><strong>📏 दूरी:</strong> ${b.km || 0} km</p>
+                            <p><strong>💰 किराया:</strong> ₹${b.fare} (आपको ₹${b.driverAmount} मिलेंगे)</p>
+                            <p style="font-size:12px; color:#999;">⏰ ${time}</p>
+                            <button class="btn-accept" onclick="acceptBooking('${id}')">✅ बुकिंग स्वीकार करें</button>
+                        </div>
+                    `;
+                });
+                document.getElementById('bookingsList').innerHTML = html;
+            } catch (error) {
+                document.getElementById('bookingsList').innerHTML = '<div class="error">डेटा लोड नहीं हुआ</div>';
+                console.error(error);
+            }
+        }
+
+        // Accept booking function
+        window.acceptBooking = async function(bookingId) {
+            if (!currentDriver) {
+                alert('पहले लॉगिन करें');
+                return;
+            }
+
+            if (!confirm('क्या आप इस बुकिंग को स्वीकार करना चाहते हैं?')) return;
+
+            try {
+                await db.collection('bookings').doc(bookingId).update({
+                    status: 'accepted',
+                    driverId: currentDriver.uid,
+                    driverPhone: currentDriver.phoneNumber,
+                    acceptedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                alert('बुकिंग स्वीकार कर ली गई!');
+                loadPendingBookings(); // Refresh list
+            } catch (error) {
+                alert('स्वीकार नहीं कर पाए: ' + error.message);
+            }
+        };
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            if (currentDriver) loadPendingBookings();
+        }, 30000);
+    </script>
+</body>
+  </html>
